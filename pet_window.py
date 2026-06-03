@@ -8,7 +8,7 @@ import tkinter as tk
 from ctypes import wintypes
 from pathlib import Path
 
-from image_pipeline import PetFrame
+from image_pipeline import AtlasFrames, PetFrame
 
 
 SPI_GETWORKAREA = 48
@@ -40,23 +40,24 @@ class PetWindow:
     def __init__(
         self,
         root: tk.Tk,
-        frames: list[PetFrame],
+        frames_by_state: AtlasFrames,
         *,
         edge_padding: int = 24,
         snap_threshold: int = 72,
         window_snap_threshold: int = 160,
         drag_threshold: int = 6,
     ) -> None:
-        if not frames:
+        if not frames_by_state:
             raise ValueError("PetWindow requires at least one frame.")
 
         self.root = root
-        self.frames = frames
+        self.frames_by_state = frames_by_state
         self.edge_padding = edge_padding
         self.snap_threshold = snap_threshold
         self.window_snap_threshold = window_snap_threshold
         self.drag_threshold = drag_threshold
 
+        self.current_state = "idle" if "idle" in frames_by_state else next(iter(frames_by_state))
         self.current_index = 0
         self.topmost = True
         self.is_dragging = False
@@ -67,8 +68,10 @@ class PetWindow:
         self.window_origin_x = 0
         self.window_origin_y = 0
 
-        self.frame_width = max(frame.width for frame in frames)
-        self.frame_height = max(frame.height for frame in frames)
+        all_frames = [frame for frames in frames_by_state.values() for frame in frames]
+        self.frame_width = max(frame.width for frame in all_frames)
+        self.frame_height = max(frame.height for frame in all_frames)
+        self.animation_after_id: str | None = None
 
         self.label = tk.Label(root, bd=0, highlightthickness=0, bg="white", cursor="hand2")
         self.label.pack()
@@ -81,16 +84,21 @@ class PetWindow:
             variable=self.topmost_var,
             command=self.toggle_topmost,
         )
+        state_menu = tk.Menu(self.menu, tearoff=False)
+        for state_name in self.frames_by_state:
+            state_menu.add_command(label=state_name, command=lambda value=state_name: self.set_state(value))
+        self.menu.add_cascade(label="切换状态", menu=state_menu)
         self.menu.add_command(label="取消窗体吸附", command=self.detach_window, state="disabled")
         self.menu.add_separator()
         self.menu.add_command(label="退出", command=self.root.destroy)
 
         self._configure_window()
         self._bind_events()
-        self.show_frame(0)
+        self.set_state(self.current_state)
         self._position_at_bottom_right()
         LOGGER.info(
-            "Pet window ready: size=%sx%s edge_padding=%s snap_threshold=%s window_snap_threshold=%s drag_threshold=%s.",
+            "Pet window ready: state=%s size=%sx%s edge_padding=%s snap_threshold=%s window_snap_threshold=%s drag_threshold=%s.",
+            self.current_state,
             self.frame_width,
             self.frame_height,
             self.edge_padding,
@@ -309,14 +317,43 @@ class PetWindow:
         LOGGER.info("Initial position set to (%s, %s) within work area (%s, %s, %s, %s).", x_pos, y_pos, left, top, right, bottom)
 
     def show_frame(self, index: int) -> None:
-        self.current_index = index % len(self.frames)
-        frame = self.frames[self.current_index]
+        frames = self.frames_by_state[self.current_state]
+        self.current_index = index % len(frames)
+        frame = frames[self.current_index]
         self.label.configure(image=frame.image)
         self.label.image = frame.image
-        LOGGER.info("Showing frame #%s (%s).", self.current_index, Path(frame.path).name)
+        LOGGER.info("Showing state=%s frame #%s (%s).", self.current_state, self.current_index, Path(frame.path).name)
 
     def next_frame(self) -> None:
         self.show_frame(self.current_index + 1)
+
+    def set_state(self, state: str) -> None:
+        if state not in self.frames_by_state:
+            LOGGER.warning("State %s is unavailable; keeping %s.", state, self.current_state)
+            return
+        self.current_state = state
+        self.current_index = 0
+        self.show_frame(0)
+        self._schedule_next_frame()
+        LOGGER.info("Switched pet state to %s.", self.current_state)
+
+    def cycle_state(self) -> None:
+        ordered_states = list(self.frames_by_state)
+        next_index = (ordered_states.index(self.current_state) + 1) % len(ordered_states)
+        self.set_state(ordered_states[next_index])
+
+    def _schedule_next_frame(self) -> None:
+        if self.animation_after_id is not None:
+            try:
+                self.root.after_cancel(self.animation_after_id)
+            except tk.TclError:
+                pass
+        frame = self.frames_by_state[self.current_state][self.current_index]
+        self.animation_after_id = self.root.after(frame.duration_ms, self._advance_animation)
+
+    def _advance_animation(self) -> None:
+        self.next_frame()
+        self._schedule_next_frame()
 
     def start_drag(self, event) -> None:
         if self.attached_window is not None:
@@ -382,8 +419,8 @@ class PetWindow:
             self.is_dragging = False
             return
 
-        LOGGER.info("Click detected, switching to next frame.")
-        self.next_frame()
+        LOGGER.info("Click detected, switching to next state.")
+        self.cycle_state()
 
     def snap_to_edge(self) -> None:
         left, top, right, bottom = self._get_work_area()
