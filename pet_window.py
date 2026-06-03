@@ -4,6 +4,7 @@ import ctypes
 from dataclasses import dataclass
 import logging
 import math
+import random
 import tkinter as tk
 from ctypes import wintypes
 from pathlib import Path
@@ -34,6 +35,7 @@ class WindowAttachment:
     hwnd: int
     edge: str
     offset: int
+    top_slot: int | None = None
 
 
 class PetWindow:
@@ -62,6 +64,9 @@ class PetWindow:
         self.topmost = True
         self.is_dragging = False
         self.attached_window: WindowAttachment | None = None
+        self.screen_edge_attachment: str | None = None
+        self.screen_top_slot: int | None = None
+        self.pending_top_slot: int | None = None
         self.topmost_var = tk.BooleanVar(value=self.topmost)
         self.drag_origin_x = 0
         self.drag_origin_y = 0
@@ -72,6 +77,7 @@ class PetWindow:
         self.frame_width = max(frame.width for frame in all_frames)
         self.frame_height = max(frame.height for frame in all_frames)
         self.animation_after_id: str | None = None
+        self.move_after_id: str | None = None
 
         self.label = tk.Label(root, bd=0, highlightthickness=0, bg="white", cursor="hand2")
         self.label.pack()
@@ -127,6 +133,110 @@ class PetWindow:
         if upper < lower:
             return lower
         return min(max(value, lower), upper)
+
+    def _clear_screen_attachment(self) -> None:
+        self.screen_edge_attachment = None
+        self.screen_top_slot = None
+        self.pending_top_slot = None
+
+    def _top_slot_positions(self, left: int, right: int) -> list[int]:
+        max_x = max(left, right - self.frame_width)
+        center_x = left + max(0, (max_x - left) // 2)
+        return [left, center_x, max_x]
+
+    def _nearest_top_slot(self, current_x: int, left: int, right: int) -> tuple[int, int]:
+        positions = self._top_slot_positions(left, right)
+        slot_index = min(range(len(positions)), key=lambda index: abs(positions[index] - current_x))
+        return slot_index, positions[slot_index]
+
+    def _plan_top_slot_transition(self, current_slot: int) -> tuple[int, int | None]:
+        if current_slot == 0:
+            return 1, 2
+        if current_slot == 2:
+            return 1, 0
+        if self.pending_top_slot is not None:
+            return self.pending_top_slot, None
+        return random.choice([0, 2]), None
+
+    def _cancel_move_animation(self) -> None:
+        if self.move_after_id is None:
+            return
+        try:
+            self.root.after_cancel(self.move_after_id)
+        except tk.TclError:
+            pass
+        self.move_after_id = None
+
+    def _animate_to_x(self, target_x: int, *, on_complete) -> None:
+        self._cancel_move_animation()
+        current_x = self.root.winfo_x()
+        current_y = self.root.winfo_y()
+        if current_x == target_x:
+            on_complete()
+            return
+
+        direction = 1 if target_x > current_x else -1
+        self.set_state("running-right" if direction > 0 else "running-left")
+
+        def step() -> None:
+            current = self.root.winfo_x()
+            delta = target_x - current
+            if abs(delta) <= 16:
+                self.root.geometry(f"+{target_x}+{current_y}")
+                self.move_after_id = None
+                on_complete()
+                self.set_state("idle")
+                return
+
+            next_x = current + direction * min(24, abs(delta))
+            self.root.geometry(f"+{next_x}+{current_y}")
+            self.move_after_id = self.root.after(16, step)
+
+        step()
+
+    def _handle_top_dock_click(self) -> bool:
+        if self.attached_window is not None and self.attached_window.edge == "top":
+            rect = self._get_window_rect(self.attached_window.hwnd)
+            if rect is None:
+                return False
+            left, _top, right, _bottom = rect
+            current_slot = self.attached_window.top_slot
+            if current_slot is None:
+                current_slot, _ = self._nearest_top_slot(self.root.winfo_x(), left, right)
+            target_slot, next_pending_slot = self._plan_top_slot_transition(current_slot)
+            positions = self._top_slot_positions(left, right)
+            self.pending_top_slot = next_pending_slot
+
+            def complete() -> None:
+                self.attached_window = WindowAttachment(
+                    hwnd=self.attached_window.hwnd,
+                    edge="top",
+                    offset=positions[target_slot] - left,
+                    top_slot=target_slot,
+                )
+                LOGGER.info("Top dock click moved attached pet to slot=%s.", target_slot)
+
+            self._animate_to_x(positions[target_slot], on_complete=complete)
+            return True
+
+        if self.screen_edge_attachment == "top":
+            work_left, _work_top, work_right, _work_bottom = self._get_work_area()
+            current_slot = self.screen_top_slot
+            if current_slot is None:
+                current_slot, _ = self._nearest_top_slot(self.root.winfo_x(), work_left, work_right)
+            target_slot, next_pending_slot = self._plan_top_slot_transition(current_slot)
+            positions = self._top_slot_positions(work_left, work_right)
+            self.pending_top_slot = next_pending_slot
+
+            def complete() -> None:
+                self.screen_edge_attachment = "top"
+                self.screen_top_slot = target_slot
+                LOGGER.info("Top dock click moved screen-docked pet to slot=%s.", target_slot)
+
+            self._animate_to_x(positions[target_slot], on_complete=complete)
+            return True
+
+        return False
 
     def _is_candidate_window(self, hwnd: int) -> bool:
         if hwnd == self.root.winfo_id():
@@ -278,6 +388,11 @@ class PetWindow:
             x_pos = left - self.frame_width if attachment.edge == "left" else right
             return x_pos, y_pos
 
+        if attachment.edge == "top" and attachment.top_slot is not None:
+            positions = self._top_slot_positions(left, right)
+            slot_index = self._clamp(attachment.top_slot, 0, len(positions) - 1)
+            return positions[slot_index], top - self.frame_height
+
         max_x = max(left, right - self.frame_width)
         x_pos = self._clamp(left + attachment.offset, left, max_x)
         y_pos = top - self.frame_height if attachment.edge == "top" else bottom
@@ -285,17 +400,19 @@ class PetWindow:
 
     def _set_attachment(self, attachment: WindowAttachment | None) -> None:
         self.attached_window = attachment
+        self._clear_screen_attachment()
         state = "normal" if attachment else "disabled"
         self.menu.entryconfigure("取消窗体吸附", state=state)
         if attachment is None:
             LOGGER.info("Detached from window.")
         else:
             LOGGER.info(
-                "Attached to window: hwnd=%s title=%s edge=%s offset=%s.",
+                "Attached to window: hwnd=%s title=%s edge=%s offset=%s top_slot=%s.",
                 attachment.hwnd,
                 self._get_window_title(attachment.hwnd),
                 attachment.edge,
                 attachment.offset,
+                attachment.top_slot,
             )
 
     def _configure_window(self) -> None:
@@ -356,8 +473,11 @@ class PetWindow:
         self._schedule_next_frame()
 
     def start_drag(self, event) -> None:
+        self._cancel_move_animation()
         if self.attached_window is not None:
             self.detach_window()
+        else:
+            self._clear_screen_attachment()
 
         self.root.grab_set()
         self.root.bind("<B1-Motion>", self.on_drag)
@@ -409,14 +529,34 @@ class PetWindow:
             LOGGER.info("Drag ended at (%s, %s).", self.root.winfo_x(), self.root.winfo_y())
             attachment = self._find_window_attachment(self.root.winfo_x(), self.root.winfo_y())
             if attachment is not None:
-                self._set_attachment(attachment[0])
-                self.root.geometry(f"+{attachment[1]}+{attachment[2]}")
-                LOGGER.info("Moved to attached window target (%s, %s).", attachment[1], attachment[2])
+                selected_attachment = attachment[0]
+                target_x = attachment[1]
+                target_y = attachment[2]
+                if selected_attachment.edge == "top":
+                    rect = self._get_window_rect(selected_attachment.hwnd)
+                    if rect is not None:
+                        left, _top, right, _bottom = rect
+                        slot_index, target_x = self._nearest_top_slot(self.root.winfo_x(), left, right)
+                        target_y = rect[1] - self.frame_height
+                        selected_attachment = WindowAttachment(
+                            hwnd=selected_attachment.hwnd,
+                            edge="top",
+                            offset=target_x - left,
+                            top_slot=slot_index,
+                        )
+
+                self._set_attachment(selected_attachment)
+                self.root.geometry(f"+{target_x}+{target_y}")
+                LOGGER.info("Moved to attached window target (%s, %s).", target_x, target_y)
                 self.is_dragging = False
                 return
 
             self.snap_to_edge()
             self.is_dragging = False
+            return
+
+        if self._handle_top_dock_click():
+            LOGGER.info("Click detected on top-docked pet, moving between top slots.")
             return
 
         LOGGER.info("Click detected, switching to next state.")
@@ -440,7 +580,13 @@ class PetWindow:
             "top": clamped_y - top,
             "bottom": max_y - clamped_y,
         }
-        nearest_edge = min(distances, key=distances.get)
+        nearest_edge = min(
+            distances,
+            key=lambda edge: (
+                distances[edge],
+                0 if edge == "top" else 1 if edge in {"left", "right"} else 2,
+            ),
+        )
         LOGGER.info(
             "Screen edge snap check: position=(%s, %s) nearest_edge=%s distance=%s threshold=%s.",
             clamped_x,
@@ -453,13 +599,26 @@ class PetWindow:
         if distances[nearest_edge] <= self.snap_threshold:
             if nearest_edge == "left":
                 clamped_x = left
+                self.screen_edge_attachment = "left"
+                self.screen_top_slot = None
+                self.pending_top_slot = None
             elif nearest_edge == "right":
                 clamped_x = max_x
+                self.screen_edge_attachment = "right"
+                self.screen_top_slot = None
+                self.pending_top_slot = None
             elif nearest_edge == "top":
                 clamped_y = top
+                slot_index, clamped_x = self._nearest_top_slot(clamped_x, left, right)
+                self.screen_edge_attachment = "top"
+                self.screen_top_slot = slot_index
             elif nearest_edge == "bottom":
                 clamped_y = max_y
+                self.screen_edge_attachment = "bottom"
+                self.screen_top_slot = None
+                self.pending_top_slot = None
         else:
+            self._clear_screen_attachment()
             LOGGER.info("Screen edge snap skipped because distance %.1f exceeded threshold %s.", distances[nearest_edge], self.snap_threshold)
 
         self.root.geometry(f"+{clamped_x}+{clamped_y}")
