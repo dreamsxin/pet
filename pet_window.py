@@ -73,6 +73,8 @@ class PetWindow:
         self.drag_origin_y = 0
         self.window_origin_x = 0
         self.window_origin_y = 0
+        self.drag_started_with_window_attachment = False
+        self.drag_started_with_screen_attachment = False
         self.base_x = 0
         self.base_y = 0
         self.offset_x = 0
@@ -568,11 +570,6 @@ class PetWindow:
 
     def start_drag(self, event) -> None:
         self._cancel_move_animation()
-        if self.attached_window is not None:
-            self.detach_window()
-        else:
-            self._clear_screen_attachment()
-
         self.root.grab_set()
         self.root.bind("<B1-Motion>", self.on_drag)
         self.root.bind("<ButtonRelease-1>", self.end_drag)
@@ -581,12 +578,16 @@ class PetWindow:
         self.window_origin_x = self.root.winfo_x()
         self.window_origin_y = self.root.winfo_y()
         self.is_dragging = False
+        self.drag_started_with_window_attachment = self.attached_window is not None
+        self.drag_started_with_screen_attachment = self.screen_edge_attachment is not None
         LOGGER.info(
-            "Pointer down: pointer=(%s, %s) window_origin=(%s, %s).",
+            "Pointer down: pointer=(%s, %s) window_origin=(%s, %s) attached_window=%s screen_edge=%s.",
             self.drag_origin_x,
             self.drag_origin_y,
             self.window_origin_x,
             self.window_origin_y,
+            self.attached_window.edge if self.attached_window else None,
+            self.screen_edge_attachment,
         )
 
     def on_drag(self, event) -> None:
@@ -595,6 +596,10 @@ class PetWindow:
 
         if not self.is_dragging and math.hypot(delta_x, delta_y) > self.drag_threshold:
             self.is_dragging = True
+            if self.drag_started_with_window_attachment:
+                self.detach_window()
+            elif self.drag_started_with_screen_attachment:
+                self._clear_screen_attachment()
             LOGGER.info(
                 "Drag started: delta=(%s, %s) threshold=%s.",
                 delta_x,
@@ -655,9 +660,13 @@ class PetWindow:
 
         if self._handle_top_dock_click():
             LOGGER.info("Click detected on top-docked pet, moving between top slots.")
+            self.drag_started_with_window_attachment = False
+            self.drag_started_with_screen_attachment = False
             return
 
         LOGGER.info("Click detected, switching to next state.")
+        self.drag_started_with_window_attachment = False
+        self.drag_started_with_screen_attachment = False
         self.cycle_state()
 
     def snap_to_edge(self) -> None:
