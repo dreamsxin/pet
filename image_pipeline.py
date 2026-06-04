@@ -47,7 +47,7 @@ class PetFrame:
 
 
 AtlasFrames = dict[str, list[PetFrame]]
-EdgeHideFrames = dict[str, PetFrame]
+EdgeHideFrames = dict[str, list[PetFrame]]
 
 
 def load_pet_frames(asset_dir: str, target_size: tuple[int, int]) -> AtlasFrames:
@@ -103,27 +103,48 @@ def load_pet_frames_from_directory(asset_dir: Path, target_size: tuple[int, int]
 def load_edge_hide_frames(asset_dir: str, target_size: tuple[int, int]) -> EdgeHideFrames:
     asset_path = Path(asset_dir)
     mapping = {
-        "top": asset_path / "bottom-edge-clean.png",
-        "bottom": asset_path / "top-edge-clean.png",
-        "left": asset_path / "left-edge-clean.png",
-        "right": asset_path / "right-edge-clean.png",
+        "top": [asset_path / "bottom-edge-clean.png", asset_path / "bottom-edge-blink-clean.png"],
+        "bottom": [asset_path / "top-edge-clean.png", asset_path / "top-edge-blink-clean.png"],
+        "left": [asset_path / "left-edge-clean.png", asset_path / "left-edge-blink-clean.png"],
+        "right": [asset_path / "right-edge-clean.png", asset_path / "right-edge-blink-clean.png"],
     }
     loaded: EdgeHideFrames = {}
-    for edge, path in mapping.items():
-        if not path.is_file():
-            LOGGER.warning("Missing edge-hide image for %s at %s.", edge, path)
+    durations = [1400, 140, 1400]
+    for edge, paths in mapping.items():
+        if not all(path.is_file() for path in paths):
+            missing = [str(path) for path in paths if not path.is_file()]
+            LOGGER.warning("Missing edge-hide image(s) for %s: %s", edge, missing)
             continue
-        image = Image.open(path).convert("RGBA")
-        prepared = prepare_edge_hide_frame(image, edge, target_size)
-        rendered = ImageTk.PhotoImage(prepared)
-        loaded[edge] = PetFrame(
-            path=str(path),
-            image=rendered,
-            width=rendered.width(),
-            height=rendered.height(),
-            duration_ms=0,
-        )
-        LOGGER.info("Loaded edge-hide image for %s from %s.", edge, path)
+        open_image = Image.open(paths[0]).convert("RGBA")
+        blink_image = Image.open(paths[1]).convert("RGBA")
+        prepared_open = prepare_edge_hide_frame(open_image, edge, target_size)
+        prepared_blink = prepare_edge_hide_frame(blink_image, edge, target_size)
+        rendered_open = ImageTk.PhotoImage(prepared_open)
+        rendered_blink = ImageTk.PhotoImage(prepared_blink)
+        loaded[edge] = [
+            PetFrame(
+                path=str(paths[0]),
+                image=rendered_open,
+                width=rendered_open.width(),
+                height=rendered_open.height(),
+                duration_ms=durations[0],
+            ),
+            PetFrame(
+                path=str(paths[1]),
+                image=rendered_blink,
+                width=rendered_blink.width(),
+                height=rendered_blink.height(),
+                duration_ms=durations[1],
+            ),
+            PetFrame(
+                path=str(paths[0]),
+                image=rendered_open,
+                width=rendered_open.width(),
+                height=rendered_open.height(),
+                duration_ms=durations[2],
+            ),
+        ]
+        LOGGER.info("Loaded edge-hide animation for %s from %s and %s.", edge, paths[0], paths[1])
     return loaded
 
 

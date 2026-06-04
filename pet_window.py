@@ -87,13 +87,16 @@ class PetWindow:
         self.drag_restore_state = self.current_state
         self.drag_animation_state: str | None = None
         self.is_hidden_on_edge = False
+        self.edge_hide_edge: str | None = None
+        self.edge_hide_index = 0
         self.base_x = 0
         self.base_y = 0
         self.offset_x = 0
         self.offset_y = 0
 
         all_frames = [frame for frames in frames_by_state.values() for frame in frames]
-        all_frames.extend(self.edge_hide_frames.values())
+        for frames in self.edge_hide_frames.values():
+            all_frames.extend(frames)
         self.frame_width = max(frame.width for frame in all_frames)
         self.frame_height = max(frame.height for frame in all_frames)
         self.animation_after_id: str | None = None
@@ -138,6 +141,8 @@ class PetWindow:
         if not self.is_hidden_on_edge:
             return
         self.is_hidden_on_edge = False
+        self.edge_hide_edge = None
+        self.edge_hide_index = 0
         LOGGER.info("Exited edge-hide mode.")
 
     def _enter_edge_hide_mode(self, edge: str) -> None:
@@ -146,10 +151,13 @@ class PetWindow:
             self._exit_edge_hide_mode()
             return
         self.is_hidden_on_edge = True
-        frame = self.edge_hide_frames[edge]
+        self.edge_hide_edge = edge
+        self.edge_hide_index = 0
+        frame = self.edge_hide_frames[edge][self.edge_hide_index]
         self.label.configure(image=frame.image)
         self.label.image = frame.image
         LOGGER.info("Entered edge-hide mode for edge=%s (%s).", edge, Path(frame.path).name)
+        self._schedule_next_frame()
 
     def _get_work_area(self) -> tuple[int, int, int, int]:
         rect = Rect()
@@ -626,10 +634,22 @@ class PetWindow:
                 self.root.after_cancel(self.animation_after_id)
             except tk.TclError:
                 pass
-        frame = self.frames_by_state[self.current_state][self.current_index]
+        if self.is_hidden_on_edge and self.edge_hide_edge in self.edge_hide_frames:
+            frame = self.edge_hide_frames[self.edge_hide_edge][self.edge_hide_index]
+        else:
+            frame = self.frames_by_state[self.current_state][self.current_index]
         self.animation_after_id = self.root.after(frame.duration_ms, self._advance_animation)
 
     def _advance_animation(self) -> None:
+        if self.is_hidden_on_edge and self.edge_hide_edge in self.edge_hide_frames:
+            frames = self.edge_hide_frames[self.edge_hide_edge]
+            self.edge_hide_index = (self.edge_hide_index + 1) % len(frames)
+            frame = frames[self.edge_hide_index]
+            self.label.configure(image=frame.image)
+            self.label.image = frame.image
+            LOGGER.info("Showing edge-hide frame edge=%s index=%s (%s).", self.edge_hide_edge, self.edge_hide_index, Path(frame.path).name)
+            self._schedule_next_frame()
+            return
         self.next_frame()
         self._schedule_next_frame()
 
