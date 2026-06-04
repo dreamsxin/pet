@@ -48,6 +48,7 @@ class PetFrame:
 
 AtlasFrames = dict[str, list[PetFrame]]
 EdgeHideFrames = dict[str, list[PetFrame]]
+WindowDockFrames = dict[str, PetFrame]
 
 
 def load_pet_frames(asset_dir: str, target_size: tuple[int, int]) -> AtlasFrames:
@@ -145,6 +146,32 @@ def load_edge_hide_frames(asset_dir: str, target_size: tuple[int, int]) -> EdgeH
             ),
         ]
         LOGGER.info("Loaded edge-hide animation for %s from %s and %s.", edge, paths[0], paths[1])
+    return loaded
+
+
+def load_window_dock_frames(asset_dir: str, target_size: tuple[int, int]) -> WindowDockFrames:
+    asset_path = Path(asset_dir)
+    mapping = {
+        "top": asset_path / "top-clean.png",
+        "bottom": asset_path / "bottom-clean.png",
+        "left": asset_path / "left-clean.png",
+        "right": asset_path / "right-clean.png",
+    }
+    loaded: WindowDockFrames = {}
+    for edge, path in mapping.items():
+        if not path.is_file():
+            LOGGER.warning("Missing window-dock image for %s at %s.", edge, path)
+            continue
+        image = Image.open(path).convert("RGBA")
+        rendered = render_frame(image, target_size)
+        loaded[edge] = PetFrame(
+            path=str(path),
+            image=rendered,
+            width=rendered.width(),
+            height=rendered.height(),
+            duration_ms=0,
+        )
+        LOGGER.info("Loaded window-dock image for %s from %s.", edge, path)
     return loaded
 
 

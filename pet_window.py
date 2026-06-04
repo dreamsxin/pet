@@ -10,7 +10,7 @@ import tkinter as tk
 from ctypes import wintypes
 from pathlib import Path
 
-from image_pipeline import AtlasFrames, EdgeHideFrames, PetFrame
+from image_pipeline import AtlasFrames, EdgeHideFrames, PetFrame, WindowDockFrames
 
 
 SPI_GETWORKAREA = 48
@@ -49,6 +49,7 @@ class PetWindow:
         root: tk.Tk,
         frames_by_state: AtlasFrames,
         edge_hide_frames: EdgeHideFrames | None = None,
+        window_dock_frames: WindowDockFrames | None = None,
         *,
         edge_padding: int = 24,
         snap_threshold: int = 72,
@@ -61,6 +62,7 @@ class PetWindow:
         self.root = root
         self.frames_by_state = frames_by_state
         self.edge_hide_frames = edge_hide_frames or {}
+        self.window_dock_frames = window_dock_frames or {}
         self.edge_padding = edge_padding
         self.snap_threshold = snap_threshold
         self.window_snap_threshold = window_snap_threshold
@@ -87,6 +89,7 @@ class PetWindow:
         self.drag_restore_state = self.current_state
         self.drag_animation_state: str | None = None
         self.is_hidden_on_edge = False
+        self.is_window_dock_pose = False
         self.edge_hide_edge: str | None = None
         self.edge_hide_index = 0
         self.base_x = 0
@@ -97,6 +100,7 @@ class PetWindow:
         all_frames = [frame for frames in frames_by_state.values() for frame in frames]
         for frames in self.edge_hide_frames.values():
             all_frames.extend(frames)
+        all_frames.extend(self.window_dock_frames.values())
         self.frame_width = max(frame.width for frame in all_frames)
         self.frame_height = max(frame.height for frame in all_frames)
         self.animation_after_id: str | None = None
@@ -145,11 +149,30 @@ class PetWindow:
         self.edge_hide_index = 0
         LOGGER.info("Exited edge-hide mode.")
 
+    def _exit_window_dock_pose(self) -> None:
+        if not self.is_window_dock_pose:
+            return
+        self.is_window_dock_pose = False
+        LOGGER.info("Exited window-dock pose mode.")
+
+    def _enter_window_dock_pose(self, edge: str) -> None:
+        if edge not in self.window_dock_frames:
+            LOGGER.info("No window-dock image configured for edge=%s.", edge)
+            self._exit_window_dock_pose()
+            return
+        self._exit_edge_hide_mode()
+        self.is_window_dock_pose = True
+        frame = self.window_dock_frames[edge]
+        self.label.configure(image=frame.image)
+        self.label.image = frame.image
+        LOGGER.info("Entered window-dock pose for edge=%s (%s).", edge, Path(frame.path).name)
+
     def _enter_edge_hide_mode(self, edge: str) -> None:
         if edge not in self.edge_hide_frames:
             LOGGER.info("No edge-hide image configured for edge=%s.", edge)
             self._exit_edge_hide_mode()
             return
+        self._exit_window_dock_pose()
         self.is_hidden_on_edge = True
         self.edge_hide_edge = edge
         self.edge_hide_index = 0
@@ -259,10 +282,12 @@ class PetWindow:
         self.offset_y = 0
         self._apply_geometry()
         self._exit_edge_hide_mode()
+        self._exit_window_dock_pose()
 
     def _animate_to_x(self, target_x: int, *, on_complete) -> None:
         self._cancel_move_animation()
         self._exit_edge_hide_mode()
+        self._exit_window_dock_pose()
         current_x = self.root.winfo_x()
         if current_x == target_x:
             on_complete()
@@ -567,6 +592,7 @@ class PetWindow:
         self.attached_window = attachment
         self._clear_screen_attachment()
         self._exit_edge_hide_mode()
+        self._exit_window_dock_pose()
         state = "normal" if attachment else "disabled"
         self.menu.entryconfigure("取消窗体吸附", state=state)
         if attachment is None:
@@ -600,7 +626,7 @@ class PetWindow:
         LOGGER.info("Initial position set to (%s, %s) within work area (%s, %s, %s, %s).", x_pos, y_pos, left, top, right, bottom)
 
     def show_frame(self, index: int) -> None:
-        if self.is_hidden_on_edge:
+        if self.is_hidden_on_edge or self.is_window_dock_pose:
             return
         frames = self.frames_by_state[self.current_state]
         self.current_index = index % len(frames)
@@ -617,6 +643,7 @@ class PetWindow:
             LOGGER.warning("State %s is unavailable; keeping %s.", state, self.current_state)
             return
         self._exit_edge_hide_mode()
+        self._exit_window_dock_pose()
         self.current_state = state
         self.current_index = 0
         self.show_frame(0)
@@ -656,6 +683,7 @@ class PetWindow:
     def start_drag(self, event) -> None:
         self._cancel_move_animation()
         self._exit_edge_hide_mode()
+        self._exit_window_dock_pose()
         self.root.grab_set()
         self.root.bind("<B1-Motion>", self.on_drag)
         self.root.bind("<ButtonRelease-1>", self.end_drag)
@@ -759,9 +787,10 @@ class PetWindow:
                 self.offset_x = 0
                 self.offset_y = 0
                 self._set_base_position(target_x, target_y)
+                self._enter_window_dock_pose(selected_attachment.edge)
                 LOGGER.info("Moved to attached window target (%s, %s).", target_x, target_y)
                 self.is_dragging = False
-                if self.drag_restore_state in self.frames_by_state:
+                if not self.is_window_dock_pose and self.drag_restore_state in self.frames_by_state:
                     self.set_state(self.drag_restore_state)
                 self.drag_animation_state = None
                 return
@@ -848,6 +877,7 @@ class PetWindow:
         else:
             self._clear_screen_attachment()
             self._exit_edge_hide_mode()
+            self._exit_window_dock_pose()
             LOGGER.info("Screen edge snap skipped because distance %.1f exceeded threshold %s.", distances[nearest_edge], self.snap_threshold)
 
         self.offset_x = 0
@@ -883,6 +913,7 @@ class PetWindow:
                     else:
                         next_x, next_y = self._position_for_attachment(self.attached_window, rect)
                         self._set_base_position(next_x, next_y)
+                        self._enter_window_dock_pose(self.attached_window.edge)
                         LOGGER.debug(
                             "Following window: hwnd=%s title=%s edge=%s moved_to=(%s, %s).",
                             self.attached_window.hwnd,
