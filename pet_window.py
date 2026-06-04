@@ -883,7 +883,6 @@ class PetWindow:
                     else:
                         next_x, next_y = self._position_for_attachment(self.attached_window, rect)
                         self._set_base_position(next_x, next_y)
-                        self._enter_edge_hide_mode(self.attached_window.edge)
                         LOGGER.debug(
                             "Following window: hwnd=%s title=%s edge=%s moved_to=(%s, %s).",
                             self.attached_window.hwnd,
