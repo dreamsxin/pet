@@ -73,6 +73,10 @@ class PetWindow:
         self.drag_origin_y = 0
         self.window_origin_x = 0
         self.window_origin_y = 0
+        self.base_x = 0
+        self.base_y = 0
+        self.offset_x = 0
+        self.offset_y = 0
 
         all_frames = [frame for frames in frames_by_state.values() for frame in frames]
         self.frame_width = max(frame.width for frame in all_frames)
@@ -140,6 +144,21 @@ class PetWindow:
         self.screen_top_slot = None
         self.pending_top_slot = None
 
+    def _apply_geometry(self) -> None:
+        final_x = self.base_x + self.offset_x
+        final_y = self.base_y + self.offset_y
+        self.root.geometry(f"{self.frame_width}x{self.frame_height}+{final_x}+{final_y}")
+
+    def _set_base_position(self, x_pos: int, y_pos: int) -> None:
+        self.base_x = x_pos
+        self.base_y = y_pos
+        self._apply_geometry()
+
+    def _set_motion_offset(self, x_offset: int, y_offset: int = 0) -> None:
+        self.offset_x = x_offset
+        self.offset_y = y_offset
+        self._apply_geometry()
+
     def _top_slot_positions(self, left: int, right: int) -> list[int]:
         max_x = max(left, right - self.frame_width)
         center_x = left + max(0, (max_x - left) // 2)
@@ -168,16 +187,20 @@ class PetWindow:
             pass
         self.move_after_id = None
         self.top_hop_active = False
+        self.offset_x = 0
+        self.offset_y = 0
+        self._apply_geometry()
 
     def _animate_to_x(self, target_x: int, *, on_complete) -> None:
         self._cancel_move_animation()
         current_x = self.root.winfo_x()
-        current_y = self.root.winfo_y()
         if current_x == target_x:
             on_complete()
             return
 
         direction = 1 if target_x > current_x else -1
+        start_base_x = self.base_x
+        target_offset_x = target_x - start_base_x
         self.top_hop_active = True
         self.set_state("running-right" if direction > 0 else "running-left")
 
@@ -185,15 +208,23 @@ class PetWindow:
             current = self.root.winfo_x()
             delta = target_x - current
             if abs(delta) <= 16:
-                self.root.geometry(f"+{target_x}+{current_y}")
                 self.move_after_id = None
                 self.top_hop_active = False
+                self.base_x = target_x
+                self.offset_x = 0
+                self._apply_geometry()
+                self.root.update_idletasks()
                 on_complete()
                 self.set_state("idle")
                 return
 
-            next_x = current + direction * min(24, abs(delta))
-            self.root.geometry(f"+{next_x}+{current_y}")
+            next_display_x = current + direction * min(24, abs(delta))
+            next_offset_x = next_display_x - start_base_x
+            if direction > 0:
+                next_offset_x = min(next_offset_x, target_offset_x)
+            else:
+                next_offset_x = max(next_offset_x, target_offset_x)
+            self._set_motion_offset(next_offset_x)
             self.move_after_id = self.root.after(16, step)
 
         step()
@@ -429,7 +460,7 @@ class PetWindow:
         self.root.attributes("-topmost", self.topmost)
         self.root.configure(bg="white")
         self.root.wm_attributes("-transparentcolor", "white")
-        self.root.geometry(f"{self.frame_width}x{self.frame_height}")
+        self._apply_geometry()
 
     def _bind_events(self) -> None:
         self.label.bind("<ButtonPress-1>", self.start_drag)
@@ -439,7 +470,7 @@ class PetWindow:
         left, top, right, bottom = self._get_work_area()
         x_pos = max(left, right - self.frame_width - self.edge_padding)
         y_pos = max(top, bottom - self.frame_height - self.edge_padding)
-        self.root.geometry(f"{self.frame_width}x{self.frame_height}+{x_pos}+{y_pos}")
+        self._set_base_position(x_pos, y_pos)
         LOGGER.info("Initial position set to (%s, %s) within work area (%s, %s, %s, %s).", x_pos, y_pos, left, top, right, bottom)
 
     def show_frame(self, index: int) -> None:
@@ -522,7 +553,9 @@ class PetWindow:
 
         next_x = self.window_origin_x + delta_x
         next_y = self.window_origin_y + delta_y
-        self.root.geometry(f"+{next_x}+{next_y}")
+        self.offset_x = 0
+        self.offset_y = 0
+        self._set_base_position(next_x, next_y)
         LOGGER.debug("Dragging window to (%s, %s).", next_x, next_y)
 
     def end_drag(self, event) -> None:
@@ -555,7 +588,9 @@ class PetWindow:
                         )
 
                 self._set_attachment(selected_attachment)
-                self.root.geometry(f"+{target_x}+{target_y}")
+                self.offset_x = 0
+                self.offset_y = 0
+                self._set_base_position(target_x, target_y)
                 LOGGER.info("Moved to attached window target (%s, %s).", target_x, target_y)
                 self.is_dragging = False
                 return
@@ -630,7 +665,9 @@ class PetWindow:
             self._clear_screen_attachment()
             LOGGER.info("Screen edge snap skipped because distance %.1f exceeded threshold %s.", distances[nearest_edge], self.snap_threshold)
 
-        self.root.geometry(f"+{clamped_x}+{clamped_y}")
+        self.offset_x = 0
+        self.offset_y = 0
+        self._set_base_position(clamped_x, clamped_y)
         LOGGER.info("Screen edge snap result: moved_to=(%s, %s).", clamped_x, clamped_y)
 
     def toggle_topmost(self) -> None:
@@ -658,7 +695,7 @@ class PetWindow:
                         self.detach_window()
                     else:
                         next_x, next_y = self._position_for_attachment(self.attached_window, rect)
-                        self.root.geometry(f"+{next_x}+{next_y}")
+                        self._set_base_position(next_x, next_y)
                         LOGGER.debug(
                             "Following window: hwnd=%s title=%s edge=%s moved_to=(%s, %s).",
                             self.attached_window.hwnd,
