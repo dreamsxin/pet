@@ -154,8 +154,8 @@ def load_window_dock_frames(asset_dir: str, target_size: tuple[int, int]) -> Win
     mapping = {
         "top": asset_path / "top-clean.png",
         "bottom": asset_path / "bottom-clean.png",
-        "left": asset_path / "left-clean.png",
-        "right": asset_path / "right-clean.png",
+        "left": asset_path / "right-clean.png",
+        "right": asset_path / "left-clean.png",
     }
     loaded: WindowDockFrames = {}
     for edge, path in mapping.items():
