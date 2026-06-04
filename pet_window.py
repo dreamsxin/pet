@@ -67,6 +67,7 @@ class PetWindow:
         self.screen_edge_attachment: str | None = None
         self.screen_top_slot: int | None = None
         self.pending_top_slot: int | None = None
+        self.top_hop_active = False
         self.topmost_var = tk.BooleanVar(value=self.topmost)
         self.drag_origin_x = 0
         self.drag_origin_y = 0
@@ -166,6 +167,7 @@ class PetWindow:
         except tk.TclError:
             pass
         self.move_after_id = None
+        self.top_hop_active = False
 
     def _animate_to_x(self, target_x: int, *, on_complete) -> None:
         self._cancel_move_animation()
@@ -176,6 +178,7 @@ class PetWindow:
             return
 
         direction = 1 if target_x > current_x else -1
+        self.top_hop_active = True
         self.set_state("running-right" if direction > 0 else "running-left")
 
         def step() -> None:
@@ -184,6 +187,7 @@ class PetWindow:
             if abs(delta) <= 16:
                 self.root.geometry(f"+{target_x}+{current_y}")
                 self.move_after_id = None
+                self.top_hop_active = False
                 on_complete()
                 self.set_state("idle")
                 return
@@ -208,12 +212,16 @@ class PetWindow:
             self.pending_top_slot = next_pending_slot
 
             def complete() -> None:
+                current_attachment = self.attached_window
+                if current_attachment is None:
+                    return
                 self.attached_window = WindowAttachment(
-                    hwnd=self.attached_window.hwnd,
+                    hwnd=current_attachment.hwnd,
                     edge="top",
                     offset=positions[target_slot] - left,
                     top_slot=target_slot,
                 )
+                self.pending_top_slot = next_pending_slot
                 LOGGER.info("Top dock click moved attached pet to slot=%s.", target_slot)
 
             self._animate_to_x(positions[target_slot], on_complete=complete)
@@ -231,6 +239,7 @@ class PetWindow:
             def complete() -> None:
                 self.screen_edge_attachment = "top"
                 self.screen_top_slot = target_slot
+                self.pending_top_slot = next_pending_slot
                 LOGGER.info("Top dock click moved screen-docked pet to slot=%s.", target_slot)
 
             self._animate_to_x(positions[target_slot], on_complete=complete)
@@ -634,6 +643,8 @@ class PetWindow:
 
     def _follow_attached_window(self) -> None:
         try:
+            if self.top_hop_active:
+                return
             if self.attached_window is not None:
                 rect = self._get_window_rect(self.attached_window.hwnd)
                 if rect is None or ctypes.windll.user32.IsIconic(self.attached_window.hwnd):
