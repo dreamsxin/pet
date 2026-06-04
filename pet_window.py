@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import logging
 import math
 import random
+import time
 import tkinter as tk
 from ctypes import wintypes
 from pathlib import Path
@@ -18,6 +19,10 @@ MIN_WINDOW_EDGE = 80
 GWL_EXSTYLE = -20
 WS_EX_TOOLWINDOW = 0x00000080
 WS_EX_NOACTIVATE = 0x08000000
+MOVE_INTERVAL_MS = 40
+MOVE_MIN_DURATION_MS = 700
+MOVE_MAX_DURATION_MS = 1300
+MOVE_MS_PER_PIXEL = 1.6
 LOGGER = logging.getLogger("pet.window")
 
 
@@ -212,23 +217,40 @@ class PetWindow:
 
         direction = 1 if target_x > current_x else -1
         start_base_x = self.base_x
+        start_offset_x = self.offset_x
         target_offset_x = target_x - start_base_x
+        distance_px = abs(target_x - current_x)
+        duration_ms = int(
+            self._clamp(
+                round(distance_px * MOVE_MS_PER_PIXEL),
+                MOVE_MIN_DURATION_MS,
+                MOVE_MAX_DURATION_MS,
+            )
+        )
+        start_time = time.monotonic()
         self.top_hop_active = True
         LOGGER.info(
-            "Starting top-hop animation: start_base_x=%s current_x=%s target_x=%s target_offset_x=%s direction=%s.",
+            "Starting top-hop animation: start_base_x=%s current_x=%s target_x=%s target_offset_x=%s direction=%s duration_ms=%s.",
             start_base_x,
             current_x,
             target_x,
             target_offset_x,
             direction,
+            duration_ms,
         )
         self.set_state("running-right" if direction > 0 else "running-left")
 
         def step() -> None:
+            elapsed_ms = (time.monotonic() - start_time) * 1000.0
+            progress = min(1.0, elapsed_ms / duration_ms)
+            next_offset_x = round(
+                start_offset_x + (target_offset_x - start_offset_x) * progress
+            )
+            self._set_motion_offset(next_offset_x)
             current = self.root.winfo_x()
             delta = target_x - current
             LOGGER.info(
-                "Top-hop step: base=(%s, %s) offset=(%s, %s) current=(%s, %s) target_x=%s delta=%s.",
+                "Top-hop step: base=(%s, %s) offset=(%s, %s) current=(%s, %s) target_x=%s delta=%s progress=%.2f.",
                 self.base_x,
                 self.base_y,
                 self.offset_x,
@@ -237,8 +259,9 @@ class PetWindow:
                 self.root.winfo_y(),
                 target_x,
                 delta,
+                progress,
             )
-            if abs(delta) <= 16:
+            if progress >= 1.0 or abs(delta) <= 1:
                 self.move_after_id = None
                 self.top_hop_active = False
                 self.base_x = target_x
@@ -258,14 +281,7 @@ class PetWindow:
                 self.set_state("idle")
                 return
 
-            next_display_x = current + direction * min(24, abs(delta))
-            next_offset_x = next_display_x - start_base_x
-            if direction > 0:
-                next_offset_x = min(next_offset_x, target_offset_x)
-            else:
-                next_offset_x = max(next_offset_x, target_offset_x)
-            self._set_motion_offset(next_offset_x)
-            self.move_after_id = self.root.after(16, step)
+            self.move_after_id = self.root.after(MOVE_INTERVAL_MS, step)
 
         step()
 
