@@ -152,11 +152,21 @@ class PetWindow:
     def _set_base_position(self, x_pos: int, y_pos: int) -> None:
         self.base_x = x_pos
         self.base_y = y_pos
+        LOGGER.info("Base position set: base=(%s, %s) offset=(%s, %s).", self.base_x, self.base_y, self.offset_x, self.offset_y)
         self._apply_geometry()
 
     def _set_motion_offset(self, x_offset: int, y_offset: int = 0) -> None:
         self.offset_x = x_offset
         self.offset_y = y_offset
+        LOGGER.info(
+            "Motion offset set: base=(%s, %s) offset=(%s, %s) actual=(%s, %s).",
+            self.base_x,
+            self.base_y,
+            self.offset_x,
+            self.offset_y,
+            self.base_x + self.offset_x,
+            self.base_y + self.offset_y,
+        )
         self._apply_geometry()
 
     def _top_slot_positions(self, left: int, right: int) -> list[int]:
@@ -202,11 +212,30 @@ class PetWindow:
         start_base_x = self.base_x
         target_offset_x = target_x - start_base_x
         self.top_hop_active = True
+        LOGGER.info(
+            "Starting top-hop animation: start_base_x=%s current_x=%s target_x=%s target_offset_x=%s direction=%s.",
+            start_base_x,
+            current_x,
+            target_x,
+            target_offset_x,
+            direction,
+        )
         self.set_state("running-right" if direction > 0 else "running-left")
 
         def step() -> None:
             current = self.root.winfo_x()
             delta = target_x - current
+            LOGGER.info(
+                "Top-hop step: base=(%s, %s) offset=(%s, %s) current=(%s, %s) target_x=%s delta=%s.",
+                self.base_x,
+                self.base_y,
+                self.offset_x,
+                self.offset_y,
+                current,
+                self.root.winfo_y(),
+                target_x,
+                delta,
+            )
             if abs(delta) <= 16:
                 self.move_after_id = None
                 self.top_hop_active = False
@@ -214,6 +243,15 @@ class PetWindow:
                 self.offset_x = 0
                 self._apply_geometry()
                 self.root.update_idletasks()
+                LOGGER.info(
+                    "Top-hop complete: base=(%s, %s) offset=(%s, %s) actual=(%s, %s).",
+                    self.base_x,
+                    self.base_y,
+                    self.offset_x,
+                    self.offset_y,
+                    self.root.winfo_x(),
+                    self.root.winfo_y(),
+                )
                 on_complete()
                 self.set_state("idle")
                 return
@@ -241,6 +279,14 @@ class PetWindow:
             target_slot, next_pending_slot = self._plan_top_slot_transition(current_slot)
             positions = self._top_slot_positions(left, right)
             self.pending_top_slot = next_pending_slot
+            LOGGER.info(
+                "Top dock click on attached window: current_slot=%s target_slot=%s next_pending_slot=%s positions=%s current_x=%s.",
+                current_slot,
+                target_slot,
+                next_pending_slot,
+                positions,
+                self.root.winfo_x(),
+            )
 
             def complete() -> None:
                 current_attachment = self.attached_window
@@ -266,6 +312,14 @@ class PetWindow:
             target_slot, next_pending_slot = self._plan_top_slot_transition(current_slot)
             positions = self._top_slot_positions(work_left, work_right)
             self.pending_top_slot = next_pending_slot
+            LOGGER.info(
+                "Top dock click on screen top: current_slot=%s target_slot=%s next_pending_slot=%s positions=%s current_x=%s.",
+                current_slot,
+                target_slot,
+                next_pending_slot,
+                positions,
+                self.root.winfo_x(),
+            )
 
             def complete() -> None:
                 self.screen_edge_attachment = "top"
@@ -656,6 +710,12 @@ class PetWindow:
                 slot_index, clamped_x = self._nearest_top_slot(clamped_x, left, right)
                 self.screen_edge_attachment = "top"
                 self.screen_top_slot = slot_index
+                LOGGER.info(
+                    "Screen top dock snapped to slot=%s at x=%s (positions=%s).",
+                    slot_index,
+                    clamped_x,
+                    self._top_slot_positions(left, right),
+                )
             elif nearest_edge == "bottom":
                 clamped_y = max_y
                 self.screen_edge_attachment = "bottom"
