@@ -80,6 +80,8 @@ class PetWindow:
         self.window_origin_y = 0
         self.drag_started_with_window_attachment = False
         self.drag_started_with_screen_attachment = False
+        self.drag_restore_state = self.current_state
+        self.drag_animation_state: str | None = None
         self.base_x = 0
         self.base_y = 0
         self.offset_x = 0
@@ -596,6 +598,8 @@ class PetWindow:
         self.is_dragging = False
         self.drag_started_with_window_attachment = self.attached_window is not None
         self.drag_started_with_screen_attachment = self.screen_edge_attachment is not None
+        self.drag_restore_state = self.current_state
+        self.drag_animation_state = None
         LOGGER.info(
             "Pointer down: pointer=(%s, %s) window_origin=(%s, %s) attached_window=%s screen_edge=%s.",
             self.drag_origin_x,
@@ -625,6 +629,13 @@ class PetWindow:
 
         if not self.is_dragging:
             return
+
+        if abs(delta_x) >= max(4, abs(delta_y)):
+            direction_state = "running-right" if delta_x > 0 else "running-left"
+            if direction_state != self.drag_animation_state:
+                self.drag_animation_state = direction_state
+                self.set_state(direction_state)
+                LOGGER.info("Drag direction animation changed to %s.", direction_state)
 
         next_x = self.window_origin_x + delta_x
         next_y = self.window_origin_y + delta_y
@@ -668,10 +679,16 @@ class PetWindow:
                 self._set_base_position(target_x, target_y)
                 LOGGER.info("Moved to attached window target (%s, %s).", target_x, target_y)
                 self.is_dragging = False
+                if self.drag_restore_state in self.frames_by_state:
+                    self.set_state(self.drag_restore_state)
+                self.drag_animation_state = None
                 return
 
             self.snap_to_edge()
             self.is_dragging = False
+            if self.drag_restore_state in self.frames_by_state:
+                self.set_state(self.drag_restore_state)
+            self.drag_animation_state = None
             return
 
         if self._handle_top_dock_click():
@@ -683,6 +700,7 @@ class PetWindow:
         LOGGER.info("Click detected, switching to next state.")
         self.drag_started_with_window_attachment = False
         self.drag_started_with_screen_attachment = False
+        self.drag_animation_state = None
         self.cycle_state()
 
     def snap_to_edge(self) -> None:
