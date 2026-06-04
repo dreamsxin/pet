@@ -3,5 +3,7 @@ __pycache__/
 
 output/
 
+godot_pet/.godot/
+
 assests/*.jpg
 !assests/01.webp

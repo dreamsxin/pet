@@ -23,6 +23,24 @@ MOVE_INTERVAL_MS = 40
 MOVE_MIN_DURATION_MS = 700
 MOVE_MAX_DURATION_MS = 1300
 MOVE_MS_PER_PIXEL = 1.6
+WINDOW_DOCK_OFFSETS = {
+    "top": (0, 0),
+    "bottom": (0, 0),
+    "left": (0, 0),
+    "right": (0, 0),
+}
+WINDOW_DOCK_ORIGIN_RATIOS = {
+    "top": (0.5, 0.5),
+    "bottom": (0.5, 0.0),
+    "left": (1.0, 0.5),
+    "right": (0.0, 0.5),
+}
+WINDOW_DOCK_ORIGIN_PIXELS: dict[str, tuple[int, int] | None] = {
+    "top": None,
+    "bottom": None,
+    "left": None,
+    "right": None,
+}
 LOGGER = logging.getLogger("pet.window")
 
 
@@ -236,6 +254,47 @@ class PetWindow:
         max_x = max(left, right - self.frame_width)
         center_x = left + max(0, (max_x - left) // 2)
         return [left, center_x, max_x]
+
+    def _window_dock_origin(self, edge: str) -> tuple[int, int]:
+        frame = self.window_dock_frames.get(edge)
+        if frame is None:
+            return 0, 0
+
+        override = WINDOW_DOCK_ORIGIN_PIXELS.get(edge)
+        if override is not None:
+            return override
+
+        ratio_x, ratio_y = WINDOW_DOCK_ORIGIN_RATIOS.get(edge, (0.0, 0.0))
+        origin_x = round(frame.width * ratio_x)
+        origin_y = round(frame.height * ratio_y)
+        origin_x = self._clamp(origin_x, 0, frame.width)
+        origin_y = self._clamp(origin_y, 0, frame.height)
+        return origin_x, origin_y
+
+    def _window_dock_offsets(self, edge: str) -> tuple[int, int]:
+        return WINDOW_DOCK_OFFSETS.get(edge, (0, 0))
+
+    def _window_dock_contact_x_bounds(
+        self,
+        rect: tuple[int, int, int, int],
+        origin_x: int,
+    ) -> tuple[int, int]:
+        left, _top, right, _bottom = rect
+        work_left, _work_top, work_right, _work_bottom = self._get_work_area()
+        lower = max(left, work_left + origin_x)
+        upper = min(right, work_right - self.frame_width + origin_x)
+        return lower, upper
+
+    def _window_dock_contact_y_bounds(
+        self,
+        rect: tuple[int, int, int, int],
+        origin_y: int,
+    ) -> tuple[int, int]:
+        _left, top, _right, bottom = rect
+        _work_left, work_top, _work_right, work_bottom = self._get_work_area()
+        lower = max(top, work_top + origin_y)
+        upper = min(bottom, work_bottom - self.frame_height + origin_y)
+        return lower, upper
 
     def _screen_edge_distances(self) -> dict[str, int]:
         left, top, right, bottom = self._get_work_area()
@@ -483,14 +542,57 @@ class PetWindow:
     ) -> list[tuple[str, int, int, int]]:
         left, top, right, bottom = rect
         work_left, work_top, work_right, work_bottom = self._get_work_area()
-        max_window_x = max(left, right - self.frame_width)
-        max_window_y = max(top, bottom - self.frame_height)
+        top_origin_x, top_origin_y = self._window_dock_origin("top")
+        bottom_origin_x, bottom_origin_y = self._window_dock_origin("bottom")
+        left_origin_x, left_origin_y = self._window_dock_origin("left")
+        right_origin_x, right_origin_y = self._window_dock_origin("right")
+        top_dx, top_dy = self._window_dock_offsets("top")
+        bottom_dx, bottom_dy = self._window_dock_offsets("bottom")
+        left_dx, left_dy = self._window_dock_offsets("left")
+        right_dx, right_dy = self._window_dock_offsets("right")
+
+        left_contact_y = self._clamp(
+            current_y + left_origin_y,
+            *self._window_dock_contact_y_bounds(rect, left_origin_y),
+        )
+        right_contact_y = self._clamp(
+            current_y + right_origin_y,
+            *self._window_dock_contact_y_bounds(rect, right_origin_y),
+        )
+        top_contact_x = self._clamp(
+            current_x + top_origin_x,
+            *self._window_dock_contact_x_bounds(rect, top_origin_x),
+        )
+        bottom_contact_x = self._clamp(
+            current_x + bottom_origin_x,
+            *self._window_dock_contact_x_bounds(rect, bottom_origin_x),
+        )
 
         positions = [
-            ("left", left - self.frame_width, self._clamp(current_y, top, max_window_y), self._clamp(current_y, top, max_window_y) - top),
-            ("right", right, self._clamp(current_y, top, max_window_y), self._clamp(current_y, top, max_window_y) - top),
-            ("top", self._clamp(current_x, left, max_window_x), top - self.frame_height, self._clamp(current_x, left, max_window_x) - left),
-            ("bottom", self._clamp(current_x, left, max_window_x), bottom, self._clamp(current_x, left, max_window_x) - left),
+            (
+                "left",
+                left - left_origin_x + left_dx,
+                left_contact_y - left_origin_y + left_dy,
+                left_contact_y - top,
+            ),
+            (
+                "right",
+                right - right_origin_x + right_dx,
+                right_contact_y - right_origin_y + right_dy,
+                right_contact_y - top,
+            ),
+            (
+                "top",
+                top_contact_x - top_origin_x + top_dx,
+                top - top_origin_y + top_dy,
+                top_contact_x - left,
+            ),
+            (
+                "bottom",
+                bottom_contact_x - bottom_origin_x + bottom_dx,
+                bottom - bottom_origin_y + bottom_dy,
+                bottom_contact_x - left,
+            ),
         ]
 
         visible_positions: list[tuple[str, int, int, int]] = []
@@ -571,21 +673,25 @@ class PetWindow:
         rect: tuple[int, int, int, int],
     ) -> tuple[int, int]:
         left, top, right, bottom = rect
+        origin_x, origin_y = self._window_dock_origin(attachment.edge)
+        offset_x, offset_y = self._window_dock_offsets(attachment.edge)
 
         if attachment.edge in {"left", "right"}:
-            max_y = max(top, bottom - self.frame_height)
-            y_pos = self._clamp(top + attachment.offset, top, max_y)
-            x_pos = left - self.frame_width if attachment.edge == "left" else right
+            lower, upper = self._window_dock_contact_y_bounds(rect, origin_y)
+            contact_y = self._clamp(top + attachment.offset, lower, upper)
+            y_pos = contact_y - origin_y + offset_y
+            x_pos = (left if attachment.edge == "left" else right) - origin_x + offset_x
             return x_pos, y_pos
 
         if attachment.edge == "top" and attachment.top_slot is not None:
             positions = self._top_slot_positions(left, right)
             slot_index = self._clamp(attachment.top_slot, 0, len(positions) - 1)
-            return positions[slot_index], top - self.frame_height
+            return positions[slot_index] + offset_x, top - origin_y + offset_y
 
-        max_x = max(left, right - self.frame_width)
-        x_pos = self._clamp(left + attachment.offset, left, max_x)
-        y_pos = top - self.frame_height if attachment.edge == "top" else bottom
+        lower, upper = self._window_dock_contact_x_bounds(rect, origin_x)
+        contact_x = self._clamp(left + attachment.offset, lower, upper)
+        x_pos = contact_x - origin_x + offset_x
+        y_pos = (top if attachment.edge == "top" else bottom) - origin_y + offset_y
         return x_pos, y_pos
 
     def _set_attachment(self, attachment: WindowAttachment | None) -> None:
@@ -775,13 +881,13 @@ class PetWindow:
                     if rect is not None:
                         left, _top, right, _bottom = rect
                         slot_index, target_x = self._nearest_top_slot(self.root.winfo_x(), left, right)
-                        target_y = rect[1] - self.frame_height
                         selected_attachment = WindowAttachment(
                             hwnd=selected_attachment.hwnd,
                             edge="top",
                             offset=target_x - left,
                             top_slot=slot_index,
                         )
+                        target_x, target_y = self._position_for_attachment(selected_attachment, rect)
 
                 self._set_attachment(selected_attachment)
                 self.offset_x = 0

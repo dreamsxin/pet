@@ -13,6 +13,8 @@ LOGGER = logging.getLogger("pet.image")
 CELL_WIDTH = 192
 CELL_HEIGHT = 208
 ATLAS_COLUMNS = 8
+LOW_ALPHA_CUTOFF = 18
+SOFT_ALPHA_CUTOFF = 72
 ROW_SPECS = {
     "idle": (0, 6),
     "running-right": (1, 8),
@@ -177,17 +179,44 @@ def load_window_dock_frames(asset_dir: str, target_size: tuple[int, int]) -> Win
 
 def prepare_transparent_frame(path: Path, target_size: tuple[int, int]) -> PetFrame:
     source = Image.open(path).convert("RGBA")
-    source.thumbnail(target_size, Image.Resampling.LANCZOS)
-    rendered = ImageTk.PhotoImage(source)
+    rendered_image = resize_and_clean_rgba(source, target_size)
+    rendered = ImageTk.PhotoImage(rendered_image)
     width, height = rendered.width(), rendered.height()
     LOGGER.info("Prepared loose frame %s rendered=%sx%s.", path.name, width, height)
     return PetFrame(path=str(path), image=rendered, width=width, height=height, duration_ms=180)
 
 
 def render_frame(source: Image.Image, target_size: tuple[int, int]) -> ImageTk.PhotoImage:
+    return ImageTk.PhotoImage(resize_and_clean_rgba(source, target_size))
+
+
+def resize_and_clean_rgba(source: Image.Image, target_size: tuple[int, int]) -> Image.Image:
     frame = source.copy()
     frame.thumbnail(target_size, Image.Resampling.LANCZOS)
-    return ImageTk.PhotoImage(frame)
+    return sanitize_alpha_edges(frame)
+
+
+def sanitize_alpha_edges(source: Image.Image) -> Image.Image:
+    frame = source.convert("RGBA").copy()
+    pixels = frame.load()
+    width, height = frame.size
+    for y_pos in range(height):
+        for x_pos in range(width):
+            red, green, blue, alpha = pixels[x_pos, y_pos]
+            if alpha <= LOW_ALPHA_CUTOFF:
+                pixels[x_pos, y_pos] = (0, 0, 0, 0)
+                continue
+            if alpha < SOFT_ALPHA_CUTOFF:
+                scale = alpha / SOFT_ALPHA_CUTOFF
+                pixels[x_pos, y_pos] = (
+                    round(red * scale),
+                    round(green * scale),
+                    round(blue * scale),
+                    alpha,
+                )
+            elif alpha == 0 and (red or green or blue):
+                pixels[x_pos, y_pos] = (0, 0, 0, 0)
+    return frame
 
 
 def prepare_edge_hide_frame(
@@ -202,8 +231,7 @@ def prepare_edge_hide_frame(
     sprite = source.crop(bbox)
     viewport = Image.new("RGBA", target_size, (0, 0, 0, 0))
 
-    crop = sprite.copy()
-    crop.thumbnail(target_size, Image.Resampling.LANCZOS)
+    crop = resize_and_clean_rgba(sprite, target_size)
 
     if edge == "left":
         x_pos = 0
@@ -219,4 +247,4 @@ def prepare_edge_hide_frame(
         y_pos = max(0, target_size[1] - crop.height)
 
     viewport.alpha_composite(crop, (x_pos, y_pos))
-    return viewport
+    return sanitize_alpha_edges(viewport)
