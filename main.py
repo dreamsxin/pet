@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 import tkinter as tk
 
-from image_pipeline import load_pet_frames
+from image_pipeline import load_edge_hide_frames, load_pet_frames
 from pet_window import PetWindow
 
 
@@ -25,9 +25,11 @@ def main() -> None:
     logger.info("Starting desktop pet application.")
     root = tk.Tk()
     package_dir = Path(__file__).resolve().parent / "artifacts" / "hatch-pet"
+    edge_hide_dir = Path(__file__).resolve().parent / "artifacts" / "edge-hide"
     logger.info("Using pet package directory: %s", package_dir)
     frames_by_state = load_pet_frames(str(package_dir), TARGET_SIZE)
-    window = PetWindow(root, frames_by_state)
+    edge_hide_frames = load_edge_hide_frames(str(edge_hide_dir), TARGET_SIZE)
+    window = PetWindow(root, frames_by_state, edge_hide_frames)
     root.bind("1", lambda _event: window.set_state("idle"))
     root.bind("2", lambda _event: window.set_state("running-right"))
     root.bind("3", lambda _event: window.set_state("running-left"))

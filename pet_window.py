@@ -10,7 +10,7 @@ import tkinter as tk
 from ctypes import wintypes
 from pathlib import Path
 
-from image_pipeline import AtlasFrames, PetFrame
+from image_pipeline import AtlasFrames, EdgeHideFrames, PetFrame
 
 
 SPI_GETWORKAREA = 48
@@ -48,6 +48,7 @@ class PetWindow:
         self,
         root: tk.Tk,
         frames_by_state: AtlasFrames,
+        edge_hide_frames: EdgeHideFrames | None = None,
         *,
         edge_padding: int = 24,
         snap_threshold: int = 72,
@@ -59,6 +60,7 @@ class PetWindow:
 
         self.root = root
         self.frames_by_state = frames_by_state
+        self.edge_hide_frames = edge_hide_frames or {}
         self.edge_padding = edge_padding
         self.snap_threshold = snap_threshold
         self.window_snap_threshold = window_snap_threshold
@@ -78,16 +80,20 @@ class PetWindow:
         self.drag_origin_y = 0
         self.window_origin_x = 0
         self.window_origin_y = 0
+        self.last_pointer_x = 0
+        self.last_pointer_y = 0
         self.drag_started_with_window_attachment = False
         self.drag_started_with_screen_attachment = False
         self.drag_restore_state = self.current_state
         self.drag_animation_state: str | None = None
+        self.is_hidden_on_edge = False
         self.base_x = 0
         self.base_y = 0
         self.offset_x = 0
         self.offset_y = 0
 
         all_frames = [frame for frames in frames_by_state.values() for frame in frames]
+        all_frames.extend(self.edge_hide_frames.values())
         self.frame_width = max(frame.width for frame in all_frames)
         self.frame_height = max(frame.height for frame in all_frames)
         self.animation_after_id: str | None = None
@@ -127,6 +133,23 @@ class PetWindow:
             self.drag_threshold,
         )
         self.root.after(FOLLOW_INTERVAL_MS, self._follow_attached_window)
+
+    def _exit_edge_hide_mode(self) -> None:
+        if not self.is_hidden_on_edge:
+            return
+        self.is_hidden_on_edge = False
+        LOGGER.info("Exited edge-hide mode.")
+
+    def _enter_edge_hide_mode(self, edge: str) -> None:
+        if edge not in self.edge_hide_frames:
+            LOGGER.info("No edge-hide image configured for edge=%s.", edge)
+            self._exit_edge_hide_mode()
+            return
+        self.is_hidden_on_edge = True
+        frame = self.edge_hide_frames[edge]
+        self.label.configure(image=frame.image)
+        self.label.image = frame.image
+        LOGGER.info("Entered edge-hide mode for edge=%s (%s).", edge, Path(frame.path).name)
 
     def _get_work_area(self) -> tuple[int, int, int, int]:
         rect = Rect()
@@ -183,6 +206,24 @@ class PetWindow:
         center_x = left + max(0, (max_x - left) // 2)
         return [left, center_x, max_x]
 
+    def _screen_edge_distances(self) -> dict[str, int]:
+        left, top, right, bottom = self._get_work_area()
+        pointer_x = self.last_pointer_x or self.root.winfo_x()
+        pointer_y = self.last_pointer_y or self.root.winfo_y()
+        return {
+            "left": abs(pointer_x - left),
+            "right": abs(right - pointer_x),
+            "top": abs(pointer_y - top),
+            "bottom": abs(bottom - pointer_y),
+        }
+
+    def _screen_edge_candidate(self) -> str | None:
+        distances = self._screen_edge_distances()
+        nearest_edge = min(distances, key=distances.get)
+        if distances[nearest_edge] <= self.snap_threshold:
+            return nearest_edge
+        return None
+
     def _nearest_top_slot(self, current_x: int, left: int, right: int) -> tuple[int, int]:
         positions = self._top_slot_positions(left, right)
         slot_index = min(range(len(positions)), key=lambda index: abs(positions[index] - current_x))
@@ -209,9 +250,11 @@ class PetWindow:
         self.offset_x = 0
         self.offset_y = 0
         self._apply_geometry()
+        self._exit_edge_hide_mode()
 
     def _animate_to_x(self, target_x: int, *, on_complete) -> None:
         self._cancel_move_animation()
+        self._exit_edge_hide_mode()
         current_x = self.root.winfo_x()
         if current_x == target_x:
             on_complete()
@@ -515,6 +558,7 @@ class PetWindow:
     def _set_attachment(self, attachment: WindowAttachment | None) -> None:
         self.attached_window = attachment
         self._clear_screen_attachment()
+        self._exit_edge_hide_mode()
         state = "normal" if attachment else "disabled"
         self.menu.entryconfigure("取消窗体吸附", state=state)
         if attachment is None:
@@ -548,6 +592,8 @@ class PetWindow:
         LOGGER.info("Initial position set to (%s, %s) within work area (%s, %s, %s, %s).", x_pos, y_pos, left, top, right, bottom)
 
     def show_frame(self, index: int) -> None:
+        if self.is_hidden_on_edge:
+            return
         frames = self.frames_by_state[self.current_state]
         self.current_index = index % len(frames)
         frame = frames[self.current_index]
@@ -562,6 +608,7 @@ class PetWindow:
         if state not in self.frames_by_state:
             LOGGER.warning("State %s is unavailable; keeping %s.", state, self.current_state)
             return
+        self._exit_edge_hide_mode()
         self.current_state = state
         self.current_index = 0
         self.show_frame(0)
@@ -588,11 +635,14 @@ class PetWindow:
 
     def start_drag(self, event) -> None:
         self._cancel_move_animation()
+        self._exit_edge_hide_mode()
         self.root.grab_set()
         self.root.bind("<B1-Motion>", self.on_drag)
         self.root.bind("<ButtonRelease-1>", self.end_drag)
         self.drag_origin_x = event.x_root
         self.drag_origin_y = event.y_root
+        self.last_pointer_x = event.x_root
+        self.last_pointer_y = event.y_root
         self.window_origin_x = self.root.winfo_x()
         self.window_origin_y = self.root.winfo_y()
         self.is_dragging = False
@@ -613,6 +663,8 @@ class PetWindow:
     def on_drag(self, event) -> None:
         delta_x = event.x_root - self.drag_origin_x
         delta_y = event.y_root - self.drag_origin_y
+        self.last_pointer_x = event.x_root
+        self.last_pointer_y = event.y_root
 
         if not self.is_dragging and math.hypot(delta_x, delta_y) > self.drag_threshold:
             self.is_dragging = True
@@ -652,9 +704,19 @@ class PetWindow:
 
         self.root.unbind("<B1-Motion>")
         self.root.unbind("<ButtonRelease-1>")
+        self.last_pointer_x = getattr(event, "x_root", self.last_pointer_x)
+        self.last_pointer_y = getattr(event, "y_root", self.last_pointer_y)
 
         if self.is_dragging:
             LOGGER.info("Drag ended at (%s, %s).", self.root.winfo_x(), self.root.winfo_y())
+            screen_edge = self._screen_edge_candidate()
+            if screen_edge is not None:
+                LOGGER.info("Screen edge takes priority on release: edge=%s.", screen_edge)
+                self.snap_to_edge()
+                self.is_dragging = False
+                self.drag_animation_state = None
+                return
+
             attachment = self._find_window_attachment(self.root.winfo_x(), self.root.winfo_y())
             if attachment is not None:
                 selected_attachment = attachment[0]
@@ -686,7 +748,7 @@ class PetWindow:
 
             self.snap_to_edge()
             self.is_dragging = False
-            if self.drag_restore_state in self.frames_by_state:
+            if self.screen_edge_attachment is None and self.drag_restore_state in self.frames_by_state:
                 self.set_state(self.drag_restore_state)
             self.drag_animation_state = None
             return
@@ -715,23 +777,22 @@ class PetWindow:
         clamped_x = min(max(current_x, left), max_x)
         clamped_y = min(max(current_y, top), max_y)
 
+        pointer_x = self.last_pointer_x or clamped_x
+        pointer_y = self.last_pointer_y or clamped_y
+
         distances = {
-            "left": clamped_x - left,
-            "right": max_x - clamped_x,
-            "top": clamped_y - top,
-            "bottom": max_y - clamped_y,
+            "left": abs(pointer_x - left),
+            "right": abs(right - pointer_x),
+            "top": abs(pointer_y - top),
+            "bottom": abs(bottom - pointer_y),
         }
-        nearest_edge = min(
-            distances,
-            key=lambda edge: (
-                distances[edge],
-                0 if edge == "top" else 1 if edge in {"left", "right"} else 2,
-            ),
-        )
+        nearest_edge = min(distances, key=distances.get)
         LOGGER.info(
-            "Screen edge snap check: position=(%s, %s) nearest_edge=%s distance=%s threshold=%s.",
+            "Screen edge snap check: position=(%s, %s) pointer=(%s, %s) nearest_edge=%s distance=%s threshold=%s.",
             clamped_x,
             clamped_y,
+            pointer_x,
+            pointer_y,
             nearest_edge,
             distances[nearest_edge],
             self.snap_threshold,
@@ -766,11 +827,14 @@ class PetWindow:
                 self.pending_top_slot = None
         else:
             self._clear_screen_attachment()
+            self._exit_edge_hide_mode()
             LOGGER.info("Screen edge snap skipped because distance %.1f exceeded threshold %s.", distances[nearest_edge], self.snap_threshold)
 
         self.offset_x = 0
         self.offset_y = 0
         self._set_base_position(clamped_x, clamped_y)
+        if self.screen_edge_attachment is not None:
+            self._enter_edge_hide_mode(self.screen_edge_attachment)
         LOGGER.info("Screen edge snap result: moved_to=(%s, %s).", clamped_x, clamped_y)
 
     def toggle_topmost(self) -> None:
@@ -799,6 +863,7 @@ class PetWindow:
                     else:
                         next_x, next_y = self._position_for_attachment(self.attached_window, rect)
                         self._set_base_position(next_x, next_y)
+                        self._enter_edge_hide_mode(self.attached_window.edge)
                         LOGGER.debug(
                             "Following window: hwnd=%s title=%s edge=%s moved_to=(%s, %s).",
                             self.attached_window.hwnd,

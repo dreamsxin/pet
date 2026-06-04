@@ -70,140 +70,140 @@
       "row": 1,
       "column": 0,
       "used": true,
-      "nontransparent_pixels": 12690
+      "nontransparent_pixels": 14015
     },
     {
       "state": "running-right",
       "row": 1,
       "column": 1,
       "used": true,
-      "nontransparent_pixels": 12904
+      "nontransparent_pixels": 14337
     },
     {
       "state": "running-right",
       "row": 1,
       "column": 2,
       "used": true,
-      "nontransparent_pixels": 12539
+      "nontransparent_pixels": 14017
     },
     {
       "state": "running-right",
       "row": 1,
       "column": 3,
       "used": true,
-      "nontransparent_pixels": 12334
+      "nontransparent_pixels": 14006
     },
     {
       "state": "running-right",
       "row": 1,
       "column": 4,
       "used": true,
-      "nontransparent_pixels": 12279
+      "nontransparent_pixels": 14074
     },
     {
       "state": "running-right",
       "row": 1,
       "column": 5,
       "used": true,
-      "nontransparent_pixels": 11762
+      "nontransparent_pixels": 13511
     },
     {
       "state": "running-right",
       "row": 1,
       "column": 6,
       "used": true,
-      "nontransparent_pixels": 12376
+      "nontransparent_pixels": 14344
     },
     {
       "state": "running-right",
       "row": 1,
       "column": 7,
       "used": true,
-      "nontransparent_pixels": 12056
+      "nontransparent_pixels": 14071
     },
     {
       "state": "running-left",
       "row": 2,
       "column": 0,
       "used": true,
-      "nontransparent_pixels": 13552
+      "nontransparent_pixels": 15013
     },
     {
       "state": "running-left",
       "row": 2,
       "column": 1,
       "used": true,
-      "nontransparent_pixels": 13716
+      "nontransparent_pixels": 14477
     },
     {
       "state": "running-left",
       "row": 2,
       "column": 2,
       "used": true,
-      "nontransparent_pixels": 13886
+      "nontransparent_pixels": 14598
     },
     {
       "state": "running-left",
       "row": 2,
       "column": 3,
       "used": true,
-      "nontransparent_pixels": 13089
+      "nontransparent_pixels": 13883
     },
     {
       "state": "running-left",
       "row": 2,
       "column": 4,
       "used": true,
-      "nontransparent_pixels": 12952
+      "nontransparent_pixels": 14663
     },
     {
       "state": "running-left",
       "row": 2,
       "column": 5,
       "used": true,
-      "nontransparent_pixels": 12558
+      "nontransparent_pixels": 13592
     },
     {
       "state": "running-left",
       "row": 2,
       "column": 6,
       "used": true,
-      "nontransparent_pixels": 12166
+      "nontransparent_pixels": 13944
     },
     {
       "state": "running-left",
       "row": 2,
       "column": 7,
       "used": true,
-      "nontransparent_pixels": 12747
+      "nontransparent_pixels": 13951
     },
     {
       "state": "waving",
       "row": 3,
       "column": 0,
       "used": true,
-      "nontransparent_pixels": 18059
+      "nontransparent_pixels": 18088
     },
     {
       "state": "waving",
       "row": 3,
       "column": 1,
       "used": true,
-      "nontransparent_pixels": 18549
+      "nontransparent_pixels": 18690
     },
     {
       "state": "waving",
       "row": 3,
       "column": 2,
       "used": true,
-      "nontransparent_pixels": 18918
+      "nontransparent_pixels": 19291
     },
     {
       "state": "waving",
       "row": 3,
       "column": 3,
       "used": true,
-      "nontransparent_pixels": 18171
+      "nontransparent_pixels": 18643
     },
     {
       "state": "waving",
@@ -238,7 +238,7 @@
       "row": 4,
       "column": 0,
       "used": true,
-      "nontransparent_pixels": 19216
+      "nontransparent_pixels": 19274
     },
     {
       "state": "jumping",
@@ -252,7 +252,7 @@
       "row": 4,
       "column": 2,
       "used": true,
-      "nontransparent_pixels": 17924
+      "nontransparent_pixels": 18097
     },
     {
       "state": "jumping",
@@ -266,7 +266,7 @@
       "row": 4,
       "column": 4,
       "used": true,
-      "nontransparent_pixels": 18072
+      "nontransparent_pixels": 18171
     },
     {
       "state": "jumping",
@@ -406,42 +406,42 @@
       "row": 7,
       "column": 0,
       "used": true,
-      "nontransparent_pixels": 17302
+      "nontransparent_pixels": 17373
     },
     {
       "state": "running",
       "row": 7,
       "column": 1,
       "used": true,
-      "nontransparent_pixels": 16823
+      "nontransparent_pixels": 17935
     },
     {
       "state": "running",
       "row": 7,
       "column": 2,
       "used": true,
-      "nontransparent_pixels": 16652
+      "nontransparent_pixels": 17107
     },
     {
       "state": "running",
       "row": 7,
       "column": 3,
       "used": true,
-      "nontransparent_pixels": 17338
+      "nontransparent_pixels": 17694
     },
     {
       "state": "running",
       "row": 7,
       "column": 4,
       "used": true,
-      "nontransparent_pixels": 17038
+      "nontransparent_pixels": 17465
     },
     {
       "state": "running",
       "row": 7,
       "column": 5,
       "used": true,
-      "nontransparent_pixels": 17118
+      "nontransparent_pixels": 17165
     },
     {
       "state": "running",

@@ -26,6 +26,8 @@
   - 读取 Codex 宠物包 atlas，并按状态切出帧
 - `artifacts/hatch-pet/`
   - 最终宠物包与 QA 文件
+- `artifacts/edge-hide/`
+  - 边缘停靠隐藏素材（上/下/左/右）
 - `assests/01.webp`
   - 角色母版参考图
 - `imagegen_scripts/`
@@ -75,6 +77,12 @@ python .\main.py
 
 ```text
 C:\Users\admin\.codex\pets\capy-lulu\
+```
+
+也可以直接运行项目内安装脚本：
+
+```powershell
+python .\install_capy_lulu_to_codex.py
 ```
 
 当前选择的宠物配置：
@@ -127,6 +135,7 @@ atlas 固定使用 9 行：
 - 屏幕工作区边缘吸附
 - 普通应用窗口边缘吸附
 - 目标窗口移动时跟随
+- 停靠到屏幕边缘时自动切换到 `edge-hide` 素材
 - 顶边吸附时按左/中/右三段最近位置停靠
 - 顶边停靠后点击可在左/中/右之间自动跑位
 

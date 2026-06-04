@@ -47,6 +47,7 @@ class PetFrame:
 
 
 AtlasFrames = dict[str, list[PetFrame]]
+EdgeHideFrames = dict[str, PetFrame]
 
 
 def load_pet_frames(asset_dir: str, target_size: tuple[int, int]) -> AtlasFrames:
@@ -99,6 +100,33 @@ def load_pet_frames_from_directory(asset_dir: Path, target_size: tuple[int, int]
     return {"idle": idle_frames}
 
 
+def load_edge_hide_frames(asset_dir: str, target_size: tuple[int, int]) -> EdgeHideFrames:
+    asset_path = Path(asset_dir)
+    mapping = {
+        "top": asset_path / "bottom-edge-clean.png",
+        "bottom": asset_path / "top-edge-clean.png",
+        "left": asset_path / "left-edge-clean.png",
+        "right": asset_path / "right-edge-clean.png",
+    }
+    loaded: EdgeHideFrames = {}
+    for edge, path in mapping.items():
+        if not path.is_file():
+            LOGGER.warning("Missing edge-hide image for %s at %s.", edge, path)
+            continue
+        image = Image.open(path).convert("RGBA")
+        prepared = prepare_edge_hide_frame(image, edge, target_size)
+        rendered = ImageTk.PhotoImage(prepared)
+        loaded[edge] = PetFrame(
+            path=str(path),
+            image=rendered,
+            width=rendered.width(),
+            height=rendered.height(),
+            duration_ms=0,
+        )
+        LOGGER.info("Loaded edge-hide image for %s from %s.", edge, path)
+    return loaded
+
+
 def prepare_transparent_frame(path: Path, target_size: tuple[int, int]) -> PetFrame:
     source = Image.open(path).convert("RGBA")
     source.thumbnail(target_size, Image.Resampling.LANCZOS)
@@ -112,3 +140,35 @@ def render_frame(source: Image.Image, target_size: tuple[int, int]) -> ImageTk.P
     frame = source.copy()
     frame.thumbnail(target_size, Image.Resampling.LANCZOS)
     return ImageTk.PhotoImage(frame)
+
+
+def prepare_edge_hide_frame(
+    source: Image.Image,
+    edge: str,
+    target_size: tuple[int, int],
+) -> Image.Image:
+    bbox = source.getbbox()
+    if bbox is None:
+        return Image.new("RGBA", target_size, (0, 0, 0, 0))
+
+    sprite = source.crop(bbox)
+    viewport = Image.new("RGBA", target_size, (0, 0, 0, 0))
+
+    crop = sprite.copy()
+    crop.thumbnail(target_size, Image.Resampling.LANCZOS)
+
+    if edge == "left":
+        x_pos = 0
+        y_pos = max(0, (target_size[1] - crop.height) // 2)
+    elif edge == "right":
+        x_pos = max(0, target_size[0] - crop.width)
+        y_pos = max(0, (target_size[1] - crop.height) // 2)
+    elif edge == "top":
+        x_pos = max(0, (target_size[0] - crop.width) // 2)
+        y_pos = 0
+    else:
+        x_pos = max(0, (target_size[0] - crop.width) // 2)
+        y_pos = max(0, target_size[1] - crop.height)
+
+    viewport.alpha_composite(crop, (x_pos, y_pos))
+    return viewport
