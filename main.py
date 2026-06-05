@@ -8,7 +8,7 @@ from image_pipeline import load_edge_hide_frames, load_pet_frames, load_window_d
 from pet_window import PetWindow
 
 
-TARGET_SIZE = (260, 260)
+TARGET_SIZE = (64, 64)
 
 
 def configure_logging() -> None:
@@ -24,9 +24,9 @@ def main() -> None:
     logger = logging.getLogger("pet.main")
     logger.info("Starting desktop pet application.")
     root = tk.Tk()
-    package_dir = Path(__file__).resolve().parent / "artifacts" / "hatch-pet"
-    edge_hide_dir = Path(__file__).resolve().parent / "artifacts" / "edge-hide"
-    window_dock_dir = Path(__file__).resolve().parent / "artifacts" / "window-dock"
+    package_dir = Path(__file__).resolve().parent / "godot_pet" / "assets" / "hatch-pet"
+    edge_hide_dir = Path(__file__).resolve().parent / "godot_pet" / "assets" / "edge-hide-64"
+    window_dock_dir = Path(__file__).resolve().parent / "godot_pet" / "assets" / "window-dock-64"
     logger.info("Using pet package directory: %s", package_dir)
     frames_by_state = load_pet_frames(str(package_dir), TARGET_SIZE)
     edge_hide_frames = load_edge_hide_frames(str(edge_hide_dir), TARGET_SIZE)

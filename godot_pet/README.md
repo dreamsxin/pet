@@ -6,9 +6,11 @@
 
 - 用 Godot 替代 Tk 做透明窗口和动画播放
 - 直接复用现有资源：
-  - `assets/hatch-pet/spritesheet.png`
-  - `assets/edge-hide/*.png`
-  - `assets/window-dock/*.png`
+- `assets/hatch-pet/spritesheet.png`
+  - 原始 Codex atlas 的 Godot 64px 版本：`assets/hatch-pet/spritesheet-64.png`
+- `assets/edge-hide/*.png`
+- `assets/window-dock/*.png`
+  - Godot runtime uses `assets/edge-hide-64/` and `assets/window-dock-64/`.
 - 先把渲染、透明无边框窗口、基础拖拽、拖拽方向动画、屏幕边缘吸附、状态切换、特殊姿态切换跑通
 - 当前已经通过本地 `window_bridge.py` 原型接入外部窗体吸附与跟随
 
@@ -71,5 +73,11 @@ python D:\work\Pet\make_window_dock_blinks.py
 ```
 
 The script writes `*-blink-clean.png` into both `artifacts/window-dock/` and `godot_pet/assets/window-dock/`.
+
+Generate the 64x64 Godot runtime assets from the current high-resolution project assets:
+
+```powershell
+python D:\work\Pet\build_godot_64_assets.py
+```
 4. 把桥接服务从原型 HTTP 方案进一步收敛成更稳的本地接口
 5. 继续微调顶边跑位动画、速度和贴边姿态

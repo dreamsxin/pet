@@ -63,8 +63,13 @@ def load_pet_frames(asset_dir: str, target_size: tuple[int, int]) -> AtlasFrames
 
 def load_pet_frames_from_package(package_dir: Path, target_size: tuple[int, int]) -> AtlasFrames:
     atlas_path = package_dir / "spritesheet.webp"
+    for candidate in ("spritesheet-64.png", "spritesheet.png", "spritesheet.webp"):
+        candidate_path = package_dir / candidate
+        if candidate_path.is_file():
+            atlas_path = candidate_path
+            break
     if not atlas_path.is_file():
-        raise FileNotFoundError(f"Missing spritesheet.webp in {package_dir}")
+        raise FileNotFoundError(f"Missing spritesheet in {package_dir}")
 
     LOGGER.info("Loading atlas package from %s with target size %s.", atlas_path, target_size)
     with Image.open(atlas_path) as atlas_image:

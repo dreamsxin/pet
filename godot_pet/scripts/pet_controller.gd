@@ -1,9 +1,9 @@
 extends Node2D
 
-const CELL_WIDTH := 192
-const CELL_HEIGHT := 208
-const DISPLAY_SIZE := Vector2i(260, 260)
-const WINDOW_SIZE := Vector2i(320, 320)
+const CELL_WIDTH := 64
+const CELL_HEIGHT := 64
+const DISPLAY_SIZE := Vector2i(64, 64)
+const WINDOW_SIZE := Vector2i(96, 96)
 const SNAP_THRESHOLD := 72
 const DRAG_DIRECTION_THRESHOLD := 8
 const MOVE_INTERVAL := 0.04
@@ -25,19 +25,19 @@ const STATE_ROWS := {
 }
 
 const EDGE_HIDE_FILES := {
-	"top": ["res://assets/edge-hide/bottom-edge-clean.png", "res://assets/edge-hide/bottom-edge-blink-clean.png", "res://assets/edge-hide/bottom-edge-clean.png"],
-	"bottom": ["res://assets/edge-hide/top-edge-clean.png", "res://assets/edge-hide/top-edge-blink-clean.png", "res://assets/edge-hide/top-edge-clean.png"],
-	"left": ["res://assets/edge-hide/left-edge-clean.png", "res://assets/edge-hide/left-edge-blink-clean.png", "res://assets/edge-hide/left-edge-clean.png"],
-	"right": ["res://assets/edge-hide/right-edge-clean.png", "res://assets/edge-hide/right-edge-blink-clean.png", "res://assets/edge-hide/right-edge-clean.png"],
+	"top": ["res://assets/edge-hide-64/bottom-edge-clean.png", "res://assets/edge-hide-64/bottom-edge-blink-clean.png", "res://assets/edge-hide-64/bottom-edge-clean.png"],
+	"bottom": ["res://assets/edge-hide-64/top-edge-clean.png", "res://assets/edge-hide-64/top-edge-blink-clean.png", "res://assets/edge-hide-64/top-edge-clean.png"],
+	"left": ["res://assets/edge-hide-64/left-edge-clean.png", "res://assets/edge-hide-64/left-edge-blink-clean.png", "res://assets/edge-hide-64/left-edge-clean.png"],
+	"right": ["res://assets/edge-hide-64/right-edge-clean.png", "res://assets/edge-hide-64/right-edge-blink-clean.png", "res://assets/edge-hide-64/right-edge-clean.png"],
 }
 
 const EDGE_HIDE_DURATIONS := [1.4, 0.14, 1.4]
 
 const WINDOW_DOCK_FILES := {
-	"top": ["res://assets/window-dock/top-clean.png", "res://assets/window-dock/top-blink-clean.png", "res://assets/window-dock/top-clean.png"],
-	"bottom": ["res://assets/window-dock/bottom-clean.png", "res://assets/window-dock/bottom-blink-clean.png", "res://assets/window-dock/bottom-clean.png"],
-	"left": ["res://assets/window-dock/right-clean.png", "res://assets/window-dock/right-blink-clean.png", "res://assets/window-dock/right-clean.png"],
-	"right": ["res://assets/window-dock/left-clean.png", "res://assets/window-dock/left-blink-clean.png", "res://assets/window-dock/left-clean.png"],
+	"top": ["res://assets/window-dock-64/top-clean.png", "res://assets/window-dock-64/top-blink-clean.png", "res://assets/window-dock-64/top-clean.png"],
+	"bottom": ["res://assets/window-dock-64/bottom-clean.png", "res://assets/window-dock-64/bottom-blink-clean.png", "res://assets/window-dock-64/bottom-clean.png"],
+	"left": ["res://assets/window-dock-64/right-clean.png", "res://assets/window-dock-64/right-blink-clean.png", "res://assets/window-dock-64/right-clean.png"],
+	"right": ["res://assets/window-dock-64/left-clean.png", "res://assets/window-dock-64/left-blink-clean.png", "res://assets/window-dock-64/left-clean.png"],
 }
 
 const WINDOW_DOCK_DURATIONS := [1.6, 0.14, 1.2]
@@ -84,7 +84,7 @@ func _ready() -> void:
 	randomize()
 	_configure_window()
 	http_request.request_completed.connect(_on_http_request_completed)
-	atlas_texture = _load_texture("res://assets/hatch-pet/spritesheet.png")
+	atlas_texture = _load_texture("res://assets/hatch-pet/spritesheet-64.png")
 	_build_state_frames()
 	_build_edge_hide_frames()
 	_build_window_dock_frames()
